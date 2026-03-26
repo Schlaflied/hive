@@ -11,7 +11,7 @@ import logging
 import sys
 import click
 
-from .agent import default_agent, DocumentIntelligenceAgentTeam
+from .agent import default_agent, goal, DocumentIntelligenceAgentTeam
 
 
 def setup_logging(verbose=False, debug=False):
@@ -101,17 +101,15 @@ def tui(verbose, debug):
 
         llm = LiteLLMProvider(
             model=agent.config.model,
-            api_key=agent.config.api_key,
-            api_base=agent.config.api_base,
         )
 
         tools = list(agent._tool_registry.get_tools().values())
         tool_executor = agent._tool_registry.get_executor()
-        graph = agent._build_graph()
+        graph = agent.build_graph()
 
         runtime = create_agent_runtime(
             graph=graph,
-            goal=agent.goal,
+            goal=goal,
             storage_path=storage_path,
             entry_points=[
                 EntryPointSpec(

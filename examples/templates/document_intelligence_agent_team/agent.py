@@ -17,6 +17,7 @@ from pathlib import Path
 
 from framework.graph import Constraint, Goal, SuccessCriterion
 from framework.graph.edge import EdgeCondition, EdgeSpec, GraphSpec
+from framework.graph.executor import ExecutionResult
 from framework.runtime.agent_runtime import AgentRuntime, AgentRuntimeConfig
 from framework.runtime.execution_stream import EntryPointSpec
 
@@ -148,6 +149,7 @@ class DocumentIntelligenceAgentTeam:
     ):
         self.config = config or default_config
         self.metadata = agent_metadata or metadata
+        self.goal = goal
         self._runtime: AgentRuntime | None = None
 
     def _apply_worker_models(self) -> list:
@@ -234,33 +236,62 @@ class DocumentIntelligenceAgentTeam:
         if self._runtime:
             await self._runtime.stop()
 
-    def info(self) -> str:
-        """Return agent information string."""
-        return (
-            f"Agent: {self.metadata.name} v{self.metadata.version}\n"
-            f"Description: {self.metadata.description}\n"
-            f"Nodes: {len(nodes)}\n"
-            f"  - intake (client-facing)\n"
-            f"  - coordinator (Queen Bee, sub_agents: researcher, analyst, strategist)\n"
-            f"  - researcher (Worker Bee)\n"
-            f"  - analyst (Worker Bee)\n"
-            f"  - strategist (Worker Bee)\n"
-            f"Edges: {len(edges)} (intake↔coordinator loop)\n"
-            f"Pattern: Queen Bee + Worker Bees (A2A via delegate_to_sub_agent)\n"
-            f"Mode: forever-alive"
-        )
+    def info(self) -> dict:
+        """Return agent information as a dict."""
+        return {
+            "name": self.metadata.name,
+            "version": self.metadata.version,
+            "description": self.metadata.description,
+            "nodes": [n.id for n in nodes],
+            "client_facing_nodes": [n.id for n in nodes if n.client_facing],
+            "entry_node": "intake",
+            "terminal_nodes": [],
+            "sub_agents": coordinator_node.sub_agents,
+            "pattern": "Queen Bee + Worker Bees (A2A via delegate_to_sub_agent)",
+        }
 
     def validate(self) -> dict:
         """Validate the agent graph structure."""
         graph = self.build_graph()
         issues = graph.validate()
         return {
-            "valid": len(issues) == 0,
-            "issues": issues,
+            "valid": len(issues["errors"]) == 0,
+            "errors": issues["errors"],
+            "warnings": issues["warnings"],
             "nodes": len(graph.nodes),
             "edges": len(graph.edges),
             "sub_agents": coordinator_node.sub_agents,
         }
+
+    async def trigger_and_wait(
+        self,
+        entry_point: str,
+        input_data: dict,
+        timeout: float | None = None,
+        session_state: dict | None = None,
+    ) -> ExecutionResult | None:
+        """Delegate trigger_and_wait to the underlying runtime."""
+        if self._runtime is None:
+            raise RuntimeError("Agent not started. Call start() first.")
+        return await self._runtime.trigger_and_wait(
+            entry_point_id=entry_point,
+            input_data=input_data,
+            timeout=timeout,
+            session_state=session_state,
+        )
+
+    async def run(
+        self, context: dict, session_state: dict | None = None
+    ) -> ExecutionResult:
+        """Run the agent (convenience method for single execution)."""
+        await self.start()
+        try:
+            result = await self.trigger_and_wait(
+                "start", context, session_state=session_state
+            )
+            return result or ExecutionResult(success=False, error="Execution timeout")
+        finally:
+            await self.stop()
 
 
 # ---------------------------------------------------------------------------

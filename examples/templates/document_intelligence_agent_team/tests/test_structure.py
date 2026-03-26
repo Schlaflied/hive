@@ -4,33 +4,7 @@ Validates the A2A architecture: Queen Bee (coordinator) with 3 Worker Bee
 sub-agents connected via delegate_to_sub_agent, NOT edges.
 """
 
-import os
-import sys
-
 import pytest
-
-# Ensure framework and template imports work
-_TEMPLATE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_TEMPLATES_DIR = os.path.dirname(_TEMPLATE_DIR)
-_CORE_DIR = os.path.join(os.path.dirname(os.path.dirname(_TEMPLATES_DIR)), "core")
-
-for _p in (_CORE_DIR, _TEMPLATES_DIR):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-
-@pytest.fixture
-def agent_module():
-    """Import the agent module."""
-    import document_intelligence_agent_team
-
-    return document_intelligence_agent_team
-
-
-@pytest.fixture
-def agent(agent_module):
-    """Get the default agent instance."""
-    return agent_module.default_agent
 
 
 class TestGoal:
