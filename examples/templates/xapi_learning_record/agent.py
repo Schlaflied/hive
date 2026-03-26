@@ -161,7 +161,7 @@ edges = [
 # ---------------------------------------------------------------------------
 
 entry_node = "event-capture"
-entry_points = {"start": "event-capture"}
+entry_points = {"default": "event-capture"}
 async_entry_points: list[AsyncEntryPointSpec] = []
 pause_nodes: list[str] = []
 terminal_nodes: list[str] = []
