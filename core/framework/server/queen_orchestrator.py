@@ -265,9 +265,10 @@ def build_queen_tool_registry_bare() -> tuple[Any, dict[str, list[dict[str, Any]
     backend process and cache the result.
     """
     from pathlib import Path
+
+    import framework.agents.queen as _queen_pkg
     from framework.loader.mcp_registry import MCPRegistry
     from framework.loader.tool_registry import ToolRegistry
-    import framework.agents.queen as _queen_pkg
 
     queen_registry = ToolRegistry()
     queen_pkg_dir = Path(_queen_pkg.__file__).parent
