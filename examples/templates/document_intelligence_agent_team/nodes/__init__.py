@@ -8,7 +8,7 @@ Defines 5 nodes:
 - strategist: Worker Bee sub-agent for risk/impact assessment
 """
 
-from framework.graph.node import NodeSpec
+from framework.orchestrator import NodeSpec
 
 # ---------------------------------------------------------------------------
 # Node 1: Document Intake (client-facing)

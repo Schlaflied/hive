@@ -29,15 +29,22 @@ def setup_logging(verbose: bool = False, debug: bool = False) -> None:
 
 
 @click.group()
-@click.version_option(version="1.0.0")
+@click.version_option(version="0.1.0")
 def cli() -> None:
     """Document Intelligence Agent Team - Multi-perspective A2A document analysis."""
     pass
 
 
 @cli.command()
-@click.option("--document", "-d", type=str, required=True, help="Document text to analyze")
-@click.option("--brief", "-b", type=str, default="Comprehensive analysis", help="Analysis focus (optional)")
+@click.option(
+    "--document", "-d", type=str, required=True,
+    help="Document text to analyze",
+)
+@click.option(
+    "--brief", "-b", type=str,
+    default="Comprehensive analysis",
+    help="Analysis focus (optional)",
+)
 @click.option("--quiet", "-q", is_flag=True, help="Only output result JSON")
 @click.option("--verbose", "-v", is_flag=True, help="Show execution details")
 @click.option("--debug", is_flag=True, help="Show debug logging")
@@ -83,18 +90,20 @@ def tui(verbose: bool, debug: bool) -> None:
     from pathlib import Path
 
     from framework.llm import LiteLLMProvider
-    from framework.runner.tool_registry import ToolRegistry
-    from framework.runtime.agent_runtime import create_agent_runtime
-    from framework.runtime.event_bus import EventBus
-    from framework.runtime.execution_stream import EntryPointSpec
+    from framework.loader.tool_registry import ToolRegistry
+    from framework.host.agent_host import AgentHost
+
+    from framework.host.execution_manager import EntryPointSpec
 
     async def run_with_tui() -> None:
         agent = DocumentIntelligenceAgentTeam()
 
-        agent._event_bus = EventBus()
         agent._tool_registry = ToolRegistry()
 
-        storage_path = Path.home() / ".hive" / "agents" / "document_intelligence_agent_team"
+        storage_path = (
+            Path.home() / ".hive" / "agents"
+            / "document_intelligence_agent_team"
+        )
         storage_path.mkdir(parents=True, exist_ok=True)
 
         mcp_config_path = Path(__file__).parent / "mcp_servers.json"
@@ -111,7 +120,7 @@ def tui(verbose: bool, debug: bool) -> None:
         tool_executor = agent._tool_registry.get_executor()
         graph = agent._build_graph()
 
-        runtime = create_agent_runtime(
+        runtime = AgentHost(
             graph=graph,
             goal=goal,
             storage_path=storage_path,
@@ -156,7 +165,10 @@ def info(output_json: bool) -> None:
         click.echo(f"\nNodes: {', '.join(info_data['nodes'])}")
         click.echo(f"Client-facing: {', '.join(info_data['client_facing_nodes'])}")
         click.echo(f"Entry: {info_data['entry_node']}")
-        click.echo(f"Terminal: {', '.join(info_data['terminal_nodes'])}")
+        terminal = ', '.join(info_data['terminal_nodes'])
+        click.echo(
+            f"Terminal: {terminal or '(forever-alive)'}"
+        )
         click.echo(f"Edges: {len(info_data['edges'])}")
 
 
@@ -165,12 +177,12 @@ def validate() -> None:
     """Validate agent structure."""
     validation = default_agent.validate()
     if validation["valid"]:
-        click.echo("✅ Agent is valid")
+        click.echo("Agent is valid")
         if validation["warnings"]:
             for warning in validation["warnings"]:
-                click.echo(f"  ⚠️  {warning}")
+                click.echo(f"  WARNING: {warning}")
     else:
-        click.echo("❌ Agent has errors:")
+        click.echo("Agent has errors:")
         for error in validation["errors"]:
             click.echo(f"  ERROR: {error}")
     sys.exit(0 if validation["valid"] else 1)
@@ -199,7 +211,8 @@ async def _interactive_shell(verbose: bool = False) -> None:
             lines: list[str] = []
             try:
                 while True:
-                    line = await asyncio.get_event_loop().run_in_executor(None, input, "")
+                    line = await asyncio.get_event_loop(
+                    ).run_in_executor(None, input, "")
                     if line.lower() in ["quit", "exit", "q"]:
                         click.echo("Goodbye!")
                         return

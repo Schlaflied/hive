@@ -51,17 +51,23 @@ class TestA2ACoordination:
     def test_coordinator_has_sub_agents(self, agent_module):
         """Coordinator declares all 3 Worker Bees as sub_agents."""
         coordinator = next(n for n in agent_module.nodes if n.id == "coordinator")
-        assert set(coordinator.sub_agents) == {"researcher", "analyst", "strategist"}
+        assert set(getattr(coordinator, "sub_agents", [])) == {
+            "researcher", "analyst", "strategist",
+        }
 
     def test_sub_agents_have_no_sub_agents(self, agent_module):
         """Worker Bees do NOT have their own sub_agents (no nested delegation)."""
         worker_ids = {"researcher", "analyst", "strategist"}
         for node in agent_module.nodes:
             if node.id in worker_ids:
-                assert len(node.sub_agents) == 0, f"Worker Bee {node.id} should not have sub_agents"
+                sa = getattr(node, "sub_agents", [])
+                assert len(sa) == 0, (
+                    f"Worker Bee {node.id} should not "
+                    "have sub_agents"
+                )
 
     def test_sub_agents_not_connected_by_edges(self, agent_module):
-        """Sub-agent nodes should NOT appear in any edge (they're called via delegate)."""
+        """Sub-agent nodes should NOT appear in any edge."""
         edge_nodes = set()
         for edge in agent_module.edges:
             edge_nodes.add(edge.source)
@@ -69,7 +75,8 @@ class TestA2ACoordination:
 
         sub_agent_ids = {"researcher", "analyst", "strategist"}
         assert edge_nodes.isdisjoint(sub_agent_ids), (
-            f"Sub-agents should not appear in edges, found: {edge_nodes & sub_agent_ids}"
+            "Sub-agents should not appear in edges, "
+            f"found: {edge_nodes & sub_agent_ids}"
         )
 
     def test_sub_agents_have_system_prompts(self, agent_module):
@@ -77,15 +84,19 @@ class TestA2ACoordination:
         worker_ids = {"researcher", "analyst", "strategist"}
         for node in agent_module.nodes:
             if node.id in worker_ids:
-                assert node.system_prompt is not None, f"{node.id} missing system_prompt"
-                assert len(node.system_prompt) > 50, f"{node.id} system_prompt too short"
+                assert node.system_prompt is not None, (
+                    f"{node.id} missing system_prompt"
+                )
+                assert len(node.system_prompt) > 50, (
+                    f"{node.id} system_prompt too short"
+                )
 
 
 class TestEdges:
     """Test edge definitions."""
 
     def test_edges_defined(self, agent_module):
-        """Only 2 edges exist (intake ↔ coordinator loop)."""
+        """Only 2 edges exist (intake <-> coordinator loop)."""
         assert hasattr(agent_module, "edges")
         assert len(agent_module.edges) == 2
 
@@ -96,7 +107,7 @@ class TestEdges:
 
     def test_all_edges_on_success(self, agent_module):
         """All edges use on_success condition."""
-        from framework.graph.edge import EdgeCondition
+        from framework.orchestrator import EdgeCondition
 
         for edge in agent_module.edges:
             assert edge.condition == EdgeCondition.ON_SUCCESS
@@ -124,7 +135,7 @@ class TestAgentStructure:
 
     def test_validate_passes(self, agent):
         """Agent validation passes."""
-        result = agent.validate()  # internally calls _build_graph()
+        result = agent.validate()
         assert result["valid"], f"Validation failed: {result['errors']}"
 
     def test_info_returns_dict(self, agent):

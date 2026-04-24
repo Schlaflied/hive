@@ -4,17 +4,10 @@ First Hive template demonstrating the delegate_to_sub_agent pattern
 for multi-agent coordination with cross-reference synthesis.
 """
 
-__version__ = "0.1.0"
+from .agent import DocumentIntelligenceAgentTeam, default_agent, goal, nodes, edges
+from .config import RuntimeConfig, AgentMetadata, default_config, metadata, worker_models
 
-from .agent import (
-    DocumentIntelligenceAgentTeam,
-    default_agent,
-    edges,
-    goal,
-    nodes,
-)
-from .config import AgentMetadata, default_config, metadata, worker_models
-from framework.config import RuntimeConfig
+__version__ = "0.1.0"
 
 __all__ = [
     "DocumentIntelligenceAgentTeam",

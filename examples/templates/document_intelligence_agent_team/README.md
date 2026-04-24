@@ -29,7 +29,7 @@ Sub-agents (no edge connections):
 
 Unlike linear pipeline agents, this template uses Hive's native sub-agent mechanism:
 
-- **Coordinator** declares `sub_agents=["researcher", "analyst", "strategist"]`
+- **Coordinator** declares `sub_agents=["researcher", "analyst", "strategist"]` on its `NodeSpec`
 - Each Worker Bee runs in an **isolated conversation context** with its own system prompt
 - Workers can use `report_to_parent()` for progress updates
 - Each worker can optionally use a **different LLM model** for cross-model verification
@@ -86,20 +86,22 @@ consistently underperform — before their errors cascade into the final report.
 
 ## Usage
 
+### Linux / Mac
 ```bash
-# Show agent info
+PYTHONPATH=core:examples/templates python -m document_intelligence_agent_team info
+PYTHONPATH=core:examples/templates python -m document_intelligence_agent_team validate
+PYTHONPATH=core:examples/templates python -m document_intelligence_agent_team tui
+PYTHONPATH=core:examples/templates python -m document_intelligence_agent_team shell
+PYTHONPATH=core:examples/templates python -m document_intelligence_agent_team run --document "Your document text here"
+```
+
+### Windows
+```powershell
+$env:PYTHONPATH="core;examples\templates"
 python -m document_intelligence_agent_team info
-
-# Validate graph structure
 python -m document_intelligence_agent_team validate
-
-# Launch TUI dashboard
 python -m document_intelligence_agent_team tui
-
-# Interactive shell
 python -m document_intelligence_agent_team shell
-
-# Run with document
 python -m document_intelligence_agent_team run --document "Your document text here"
 ```
 
@@ -112,6 +114,24 @@ python -m document_intelligence_agent_team run --document "Your document text he
 | `researcher` | Worker Bee | ❌ | — |
 | `analyst` | Worker Bee | ❌ | — |
 | `strategist` | Worker Bee | ❌ | — |
+
+## File Structure
+
+```
+document_intelligence_agent_team/
+├── __init__.py          # Package exports
+├── __main__.py          # CLI entry point (click)
+├── agent.py             # Agent class, graph spec, goal
+├── agent.json           # Declarative agent config
+├── config.py            # RuntimeConfig, AgentMetadata, WorkerModels
+├── flowchart.json       # Graph visualization data
+├── nodes/
+│   └── __init__.py      # NodeSpec definitions (5 nodes)
+├── tests/
+│   ├── conftest.py      # Test fixtures
+│   └── test_structure.py # 21 structural tests
+└── README.md
+```
 
 ## Related
 
