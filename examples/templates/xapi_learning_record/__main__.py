@@ -317,7 +317,20 @@ async def _interactive_shell(
                     None, input, "Object name> "
                 )
 
-                if not actor_name.strip():
+                required = {
+                    "actor name": actor_name,
+                    "actor email": actor_mbox,
+                    "verb IRI": verb_id,
+                    "verb display": verb_display,
+                    "object IRI": object_id,
+                    "object name": object_name,
+                }
+                missing = [k for k, v in required.items() if not v.strip()]
+                if missing:
+                    click.echo(
+                        f"Missing required fields: {', '.join(missing)}\n",
+                        err=True,
+                    )
                     continue
 
                 if not actor_mbox.startswith("mailto:"):
@@ -333,6 +346,7 @@ async def _interactive_shell(
                 result = await agent.trigger_and_wait(
                     "default",
                     {"learning_event": json.dumps(learning_event)},
+                    timeout=30.0,
                 )
 
                 if result is None:

@@ -325,7 +325,16 @@ def post_to_lrs(
     import urllib.error
     import urllib.request
 
-    statement_id = statement.get("id", str(uuid.uuid4()))
+    if "id" not in statement:
+        return {
+            "statement_id": None,
+            "success": False,
+            "error": (
+                "statement is missing required 'id' field; "
+                "call build_xapi_statement/validate_statement first"
+            ),
+        }
+    statement_id = statement["id"]
 
     headers = {
         "Content-Type": "application/json",
