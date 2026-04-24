@@ -12,7 +12,7 @@ LRS dispatch are handled by pure Python functions in `tools.py`.
 
 ## Pipeline
 
-```
+```text
 event-capture → statement-builder → validator → lrs-dispatch → confirmation
      ↑                                                               |
      └───────────────────── (loop) ─────────────────────────────────┘
@@ -30,13 +30,12 @@ event-capture → statement-builder → validator → lrs-dispatch → confirmat
 
 ## Setup
 
-**1. Configure your LRS credentials in `config.py`:**
+**1. Set your LRS credentials as environment variables:**
 
-```python
-LRS_ENDPOINT = "https://cloud.scorm.com/lrs/YOUR_LRS_KEY/statements"
-LRS_USERNAME  = "your_username"
-LRS_PASSWORD  = "your_password"
-PLATFORM      = "Hive"
+```bash
+export LRS_ENDPOINT="https://cloud.scorm.com/lrs/YOUR_LRS_KEY/statements"
+export LRS_USERNAME="your_username"
+export LRS_PASSWORD="your_password"
 ```
 
 **2. Run the agent:**
@@ -119,12 +118,14 @@ python -m xapi_learning_record run \
 | Check | Rule |
 |---|---|
 | Required fields | `id`, `actor`, `verb`, `object`, `timestamp`, `version` |
-| `statement.id` | Valid UUID v4 string |
+| `statement.id` | Valid UUID string |
 | `actor.mbox` | `mailto:user@domain.tld` format |
 | `actor` IFI | At least one of: `mbox`, `mbox_sha1sum`, `openid`, `account` |
 | `verb.id` | Valid IRI (`scheme://...`) |
 | `object.id` | Valid IRI (`scheme://...`) |
 | `result.score.scaled` | Float in range `[0.0, 1.0]` |
+| `timestamp` | Valid ISO 8601 datetime |
+| `version` | Must be `"1.0.3"` |
 
 ---
 
@@ -214,17 +215,20 @@ Full verb registry: https://registry.tincanapi.com/
 
 ## Project Structure
 
-```
+```text
 xapi_learning_record/
 ├── __init__.py          # Package exports
 ├── __main__.py          # CLI entry point (click)
 ├── agent.py             # XAPILearningRecordAgent class + goal + edges
-├── config.py            # LRS credentials + RuntimeConfig + AgentMetadata
-├── tools.py             # build_xapi_statement, validate_statement, post_to_lrs
 ├── agent.json           # Declarative graph spec
+├── config.py            # LRS credentials (env vars) + RuntimeConfig + AgentMetadata
+├── tools.py             # build_xapi_statement, validate_statement, post_to_lrs
 ├── flowchart.json       # Flowchart metadata
 ├── mcp_servers.json     # MCP server config
-├── README.md            # This file
-└── nodes/
-    └── __init__.py      # 5 NodeSpec definitions
+├── nodes/
+│   └── __init__.py      # 5 NodeSpec definitions
+├── tests/
+│   ├── conftest.py      # Test fixtures (sys.path + session fixtures)
+│   └── test_xapi_learning_record.py  # 23 structural tests
+└── README.md            # This file
 ```

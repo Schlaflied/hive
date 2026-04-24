@@ -281,6 +281,23 @@ def validate_statement(statement: dict) -> dict:
                 f"result.score.scaled '{score['scaled']}' must be a number"
             )
 
+    # timestamp must be a valid ISO 8601 datetime
+    ts = statement.get("timestamp")
+    if ts is not None:
+        try:
+            datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            errors.append(
+                f"timestamp '{ts}' is not a valid ISO 8601 datetime"
+            )
+
+    # version must be exactly "1.0.3" per the xAPI specification
+    version = statement.get("version")
+    if version is not None and version != "1.0.3":
+        errors.append(
+            f"version '{version}' must be '1.0.3'"
+        )
+
     return {"valid": len(errors) == 0, "errors": errors}
 
 

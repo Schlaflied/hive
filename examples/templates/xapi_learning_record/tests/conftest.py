@@ -27,4 +27,8 @@ def runner_loaded():
     """Load the agent through AgentLoader (structural only, no LLM needed)."""
     from framework.loader.agent_loader import AgentLoader
 
-    return AgentLoader.load(AGENT_PATH)
+    return AgentLoader.load(
+        AGENT_PATH,
+        interactive=False,
+        skip_credential_validation=True,
+    )

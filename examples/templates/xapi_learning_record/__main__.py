@@ -267,14 +267,17 @@ def validate():
 @cli.command()
 @click.option("--mock", is_flag=True, help="Run in mock mode (skip LRS dispatch)")
 @click.option("--verbose", "-v", is_flag=True)
-def shell(mock, verbose):
+@click.option("--debug", is_flag=True, help="Show debug logging")
+def shell(mock, verbose, debug):
     """Interactive xAPI event recording session (CLI, no TUI)."""
-    asyncio.run(_interactive_shell(mock=mock, verbose=verbose))
+    asyncio.run(_interactive_shell(mock=mock, verbose=verbose, debug=debug))
 
 
-async def _interactive_shell(mock: bool = False, verbose: bool = False):
+async def _interactive_shell(
+    mock: bool = False, verbose: bool = False, debug: bool = False,
+):
     """Async interactive shell for recording learning events."""
-    setup_logging(verbose=verbose)
+    setup_logging(verbose=verbose, debug=debug)
 
     click.echo("=== xAPI Learning Record Agent ===")
     click.echo(
