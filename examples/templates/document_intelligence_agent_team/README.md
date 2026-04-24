@@ -9,10 +9,10 @@ User Input
     ↓
 [Intake]           ← Client-facing: receive document, clarify needs
     ↓
-[Coordinator]      ← Queen Bee: delegates to 3 Worker Bees
-    → delegate_to_sub_agent("researcher", task)
-    → delegate_to_sub_agent("analyst", task)
-    → delegate_to_sub_agent("strategist", task)
+[Coordinator]      ← Queen Bee: orchestrates 3 Worker Bees
+    → researcher (implicit via SubagentJudge)
+    → analyst (implicit via SubagentJudge)
+    → strategist (implicit via SubagentJudge)
     → Cross-reference findings, generate report
     ↓
 [Intake]           ← Forever-alive loop
@@ -25,9 +25,9 @@ Sub-agents (no edge connections):
 
 ## Key Concepts
 
-### A2A Coordination via `delegate_to_sub_agent`
+### A2A Coordination via `SubagentJudge`
 
-Unlike linear pipeline agents, this template uses Hive's native sub-agent mechanism:
+Unlike linear pipeline agents, this template uses Hive's implicit sub-agent orchestration:
 
 - **Coordinator** declares `sub_agents=["researcher", "analyst", "strategist"]` on its `NodeSpec`
 - Each Worker Bee runs in an **isolated conversation context** with its own system prompt
@@ -117,7 +117,7 @@ python -m document_intelligence_agent_team run --document "Your document text he
 
 ## File Structure
 
-```
+```text
 document_intelligence_agent_team/
 ├── __init__.py          # Package exports
 ├── __main__.py          # CLI entry point (click)
@@ -125,15 +125,16 @@ document_intelligence_agent_team/
 ├── agent.json           # Declarative agent config
 ├── config.py            # RuntimeConfig, AgentMetadata, WorkerModels
 ├── flowchart.json       # Graph visualization data
+├── mcp_servers.json     # MCP tool server config
 ├── nodes/
 │   └── __init__.py      # NodeSpec definitions (5 nodes)
 ├── tests/
-│   ├── conftest.py      # Test fixtures
+│   ├── conftest.py      # Test fixtures (sys.path + session fixtures)
 │   └── test_structure.py # 21 structural tests
 └── README.md
 ```
 
 ## Related
 
-- [Hive Roadmap — Queen Bee / Worker Bee](../../docs/roadmap.md)
+- [Hive Roadmap — Queen Bee / Worker Bee](../../../docs/roadmap.md)
 - [Issue #5523](https://github.com/aden-hive/hive/issues/5523)
