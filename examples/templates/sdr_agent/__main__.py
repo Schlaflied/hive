@@ -34,9 +34,27 @@ def cli():
 
 
 @cli.command()
-@click.option("--contacts", "-c", type=str, required=True, help="JSON string or file path of contacts list")
-@click.option("--goal", "-g", type=str, default="coffee chat", help="Outreach goal (e.g. 'coffee chat', 'sales pitch')")
-@click.option("--background", "-b", type=str, default="", help="Your background/role for personalization")
+@click.option(
+    "--contacts",
+    "-c",
+    type=str,
+    required=True,
+    help="JSON string or file path of contacts list",
+)
+@click.option(
+    "--goal",
+    "-g",
+    type=str,
+    default="coffee chat",
+    help="Outreach goal (e.g. 'coffee chat', 'sales pitch')",
+)
+@click.option(
+    "--background",
+    "-b",
+    type=str,
+    default="",
+    help="Your background/role for personalization",
+)
 @click.option(
     "--max-contacts",
     "-m",
@@ -85,9 +103,7 @@ def tui(mock, verbose, debug):
     try:
         from framework.tui.app import AdenTUI
     except ImportError:
-        click.echo(
-            "TUI requires the 'textual' package. Install with: pip install textual"
-        )
+        click.echo("TUI requires the 'textual' package. Install with: pip install textual")
         sys.exit(1)
 
     async def run_with_tui():
@@ -163,12 +179,8 @@ async def _interactive_shell(verbose=False):
                     click.echo("Goodbye!")
                     break
 
-                contacts = await asyncio.get_event_loop().run_in_executor(
-                    None, input, "Contacts (JSON)> "
-                )
-                background = await asyncio.get_event_loop().run_in_executor(
-                    None, input, "Your background/role> "
-                )
+                contacts = await asyncio.get_event_loop().run_in_executor(None, input, "Contacts (JSON)> ")
+                background = await asyncio.get_event_loop().run_in_executor(None, input, "Your background/role> ")
 
                 if not contacts.strip():
                     continue
@@ -204,6 +216,7 @@ async def _interactive_shell(verbose=False):
             except Exception as e:
                 click.echo(f"Error: {e}", err=True)
                 import traceback
+
                 traceback.print_exc()
     finally:
         await agent.stop()

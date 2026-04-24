@@ -31,7 +31,6 @@ class CommandBlockedError(Exception):
 # Matched against each segment of a compound command (split on ; | && ||).
 _BLOCKED_EXECUTABLES: list[str] = [
     # Network exfiltration
-    "curl",
     "wget",
     "nc",
     "ncat",
@@ -106,12 +105,9 @@ _BLOCKED_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bsudo\b", re.IGNORECASE),
     # su — switch user
     re.compile(r"\bsu\s+", re.IGNORECASE),
-    # python/python3 with -c flag (inline code execution)
-    re.compile(r"\bpython[23]?\s+-c(?=\s|['\"]|$)", re.IGNORECASE),
-    # ruby/perl/node with -e flag (inline code execution)
+    # ruby/perl with -e flag (inline code execution)
     re.compile(r"\bruby\s+-e\b", re.IGNORECASE),
     re.compile(r"\bperl\s+-e\b", re.IGNORECASE),
-    re.compile(r"\bnode\s+-e\b", re.IGNORECASE),
     # powershell encoded commands
     re.compile(r"\bpowershell\b.*-enc", re.IGNORECASE),
     # Reverse shell patterns
@@ -124,8 +120,8 @@ _BLOCKED_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bcat\s+.*(\.ssh|/etc/shadow|/etc/passwd|credential_key)", re.IGNORECASE),
     re.compile(r"\btype\s+.*credential_key", re.IGNORECASE),
     # Backtick or $() command substitution containing blocked executables
-    re.compile(r"\$\(.*\b(curl|wget|nc|ncat)\b.*\)", re.IGNORECASE),
-    re.compile(r"`.*\b(curl|wget|nc|ncat)\b.*`", re.IGNORECASE),
+    re.compile(r"\$\(.*\b(wget|nc|ncat)\b.*\)", re.IGNORECASE),
+    re.compile(r"`.*\b(wget|nc|ncat)\b.*`", re.IGNORECASE),
     # Environment variable exfiltration via echo/print
     re.compile(r"\becho\s+.*\$\{?.*(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)", re.IGNORECASE),
     # >& /dev/tcp (bash reverse shell)

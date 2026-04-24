@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Open a browser-based viewer for Hive LLM debug JSONL sessions.
 
+Starts a local HTTP server and loads session data on demand (one at a time).
+
 Usage:
     uv run --no-project scripts/llm_debug_log_visualizer.py
-    uv run --no-project scripts/llm_debug_log_visualizer.py --no-open
     uv run --no-project scripts/llm_debug_log_visualizer.py --session <execution_id>
+    uv run --no-project scripts/llm_debug_log_visualizer.py --port 8080
+    uv run --no-project scripts/llm_debug_log_visualizer.py --output debug.html
 """
 
 from __future__ import annotations
 
 import argparse
+import http.server
 import json
-import tempfile
+import urllib.parse
 import webbrowser
 from collections import defaultdict
 from dataclasses import dataclass
@@ -56,9 +60,20 @@ def _parse_args() -> argparse.Namespace:
         help="Maximum number of newest log files to scan.",
     )
     parser.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Port for the local server (0 = auto-pick a free port).",
+    )
+    parser.add_argument(
         "--no-open",
         action="store_true",
-        help="Generate the HTML but do not open a browser.",
+        help="Start the server but do not open a browser.",
+    )
+    parser.add_argument(
+        "--include-tests",
+        action="store_true",
+        help="Show test/mock sessions (hidden by default).",
     )
     return parser.parse_args()
 
@@ -93,11 +108,7 @@ def _discover_records(logs_dir: Path, limit_files: int) -> list[dict[str, Any]]:
         raise FileNotFoundError(f"log directory not found: {logs_dir}")
 
     files = sorted(
-        [
-            path
-            for path in logs_dir.iterdir()
-            if path.is_file() and path.suffix == ".jsonl"
-        ],
+        [path for path in logs_dir.iterdir() if path.is_file() and path.suffix == ".jsonl"],
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )[:limit_files]
@@ -117,14 +128,36 @@ def _format_timestamp(raw: str) -> str:
         return raw
 
 
+def _is_test_session(execution_id: str, records: list[dict[str, Any]]) -> bool:
+    """Return True for sessions that look like test artifacts."""
+    if execution_id.startswith("<MagicMock"):
+        return True
+    models = {
+        str(r.get("token_counts", {}).get("model", "")) for r in records if isinstance(r.get("token_counts"), dict)
+    }
+    models.discard("")
+    # Sessions that only used the mock LLM provider.
+    if models and models <= {"mock"}:
+        return True
+    # Sessions with no real model at all (empty string or missing).
+    if not models:
+        return True
+    return False
+
+
 def _group_sessions(
     records: list[dict[str, Any]],
+    *,
+    include_tests: bool = False,
 ) -> tuple[list[SessionSummary], dict[str, list[dict[str, Any]]]]:
     by_session: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
         execution_id = str(record.get("execution_id") or "").strip()
         if execution_id:
             by_session[execution_id].append(record)
+
+    if not include_tests:
+        by_session = {eid: recs for eid, recs in by_session.items() if not _is_test_session(eid, recs)}
 
     summaries: list[SessionSummary] = []
     for execution_id, session_records in by_session.items():
@@ -143,26 +176,13 @@ def _group_sessions(
                 start_timestamp=str(first.get("timestamp", "")),
                 end_timestamp=str(last.get("timestamp", "")),
                 turn_count=len(session_records),
-                streams=sorted(
-                    {
-                        str(r.get("stream_id", ""))
-                        for r in session_records
-                        if r.get("stream_id")
-                    }
-                ),
-                nodes=sorted(
-                    {
-                        str(r.get("node_id", ""))
-                        for r in session_records
-                        if r.get("node_id")
-                    }
-                ),
+                streams=sorted({str(r.get("stream_id", "")) for r in session_records if r.get("stream_id")}),
+                nodes=sorted({str(r.get("node_id", "")) for r in session_records if r.get("node_id")}),
                 models=sorted(
                     {
                         str(r.get("token_counts", {}).get("model", ""))
                         for r in session_records
-                        if isinstance(r.get("token_counts"), dict)
-                        and r.get("token_counts", {}).get("model")
+                        if isinstance(r.get("token_counts"), dict) and r.get("token_counts", {}).get("model")
                     }
                 ),
             )
@@ -174,7 +194,6 @@ def _group_sessions(
 
 def _render_html(
     summaries: list[SessionSummary],
-    sessions: dict[str, list[dict[str, Any]]],
     initial_session_id: str,
 ) -> str:
     summaries_data = [
@@ -193,16 +212,6 @@ def _render_html(
         for summary in summaries
     ]
 
-    sessions_data = {
-        execution_id: sorted(
-            records,
-            key=lambda record: (
-                str(record.get("timestamp", "")),
-                record.get("iteration", 0),
-            ),
-        )
-        for execution_id, records in sessions.items()
-    }
     initial = initial_session_id or (summaries[0].execution_id if summaries else "")
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -553,12 +562,14 @@ def _render_html(
     <aside class="sidebar">
       <div class="brand">
         <h1>Hive Debug</h1>
-        <p>Pick a session in the browser and inspect prompts, inputs, outputs, and tool activity turn by turn.</p>
+        <p>Pick a session in the browser and inspect prompts,
+inputs, outputs, and tool activity turn by turn.</p>
       </div>
       <input id="sessionSearch" type="search" placeholder="Filter sessions">
       <div class="setup-note">
         <h3>Logging status</h3>
-        <p>LLM turn logging is always on. If this list is empty, run Hive once and refresh after the session produces turns.</p>
+        <p>LLM turn logging is always on. If this list is empty,
+run Hive once and refresh after the session produces turns.</p>
         <pre>~/.hive/llm_logs</pre>
       </div>
       <div class="session-list" id="sessionList"></div>
@@ -570,7 +581,8 @@ def _render_html(
         <div class="meta-grid" id="metaGrid"></div>
       </section>
       <div class="toolbar">
-        <input id="turnFilter" type="search" placeholder="Filter selected session by text, tool name, role, model, or prompt content">
+        <input id="turnFilter" type="search"
+placeholder="Filter by text, tool, role, model, or prompt">
         <button type="button" id="expandAll">Expand all</button>
         <button type="button" id="collapseAll">Collapse all</button>
       </div>
@@ -579,10 +591,9 @@ def _render_html(
   </div>
 
   <script id="session-summaries" type="application/json">{json.dumps(summaries_data, ensure_ascii=False)}</script>
-  <script id="session-records" type="application/json">{json.dumps(sessions_data, ensure_ascii=False)}</script>
   <script>
     const summaries = JSON.parse(document.getElementById("session-summaries").textContent);
-    const recordsBySession = JSON.parse(document.getElementById("session-records").textContent);
+    const recordCache = {{}};
     const initialSessionId = {json.dumps(initial, ensure_ascii=False)};
 
     const sessionSearch = document.getElementById("sessionSearch");
@@ -638,9 +649,15 @@ def _render_html(
             ...(summary.models || []).slice(0, 2),
           ];
           return `
-            <button type="button" class="session-card${{active}}" data-session-id="${{escapeHtml(summary.execution_id)}}">
-              <div class="sid">${{escapeHtml(summary.execution_id)}}</div>
-              <div class="meta">${{chips.map((chip) => `<span>${{escapeHtml(chip)}}</span>`).join("")}}</div>
+            <button type="button"
+class="session-card${{active}}"
+data-session-id="${{escapeHtml(summary.execution_id)}}">
+              <div class="sid">${{escapeHtml(
+                summary.execution_id
+              )}}</div>
+              <div class="meta">${{chips.map(
+                (chip) => `<span>${{escapeHtml(chip)}}</span>`
+              ).join("")}}</div>
             </button>
           `;
         }})
@@ -648,7 +665,9 @@ def _render_html(
     }}
 
     function renderMetaCard(label, value) {{
-      return `<div class="meta-card"><span class="label">${{escapeHtml(label)}}</span>${{escapeHtml(value || "-")}}</div>`;
+      return `<div class="meta-card"><span class="label">${{
+        escapeHtml(label)
+      }}</span>${{escapeHtml(value || "-")}}</div>`;
     }}
 
     function renderMessage(message, index) {{
@@ -668,7 +687,8 @@ def _render_html(
           }}
           ${{
             toolCalls
-              ? `<details class="block"><summary>tool_calls</summary><pre>${{prettyJson(toolCalls)}}</pre></details>`
+              ? `<details class="block"><summary>tool_calls</summary>` +
+                `<pre>${{prettyJson(toolCalls)}}</pre></details>`
               : ""
           }}
         </div>
@@ -715,12 +735,18 @@ def _render_html(
           </div>
           ${{
             systemPrompt
-              ? `<details class="block" open><summary>System prompt</summary><pre>${{escapeHtml(systemPrompt)}}</pre></details>`
+              ? `<details class="block" open>` +
+                `<summary>System prompt</summary>` +
+                `<pre>${{escapeHtml(systemPrompt)}}</pre></details>`
               : ""
           }}
           ${{
             messages.length
-              ? `<details class="block" open><summary>Input messages (${{messages.length}})</summary>${{messages.map((message, index) => renderMessage(message, index + 1)).join("")}}</details>`
+              ? `<details class="block" open>` +
+                `<summary>Input messages (${{messages.length}})` +
+                `</summary>${{messages.map((message, index) =>
+                  renderMessage(message, index + 1)
+                ).join("")}}</details>`
               : ""
           }}
           <details class="block" open>
@@ -729,27 +755,44 @@ def _render_html(
           </details>
           ${{
             toolCalls.length
-              ? `<details class="block" open><summary>Tool calls (${{toolCalls.length}})</summary>${{toolCalls.map((toolCall, index) => renderToolCall(toolCall, index + 1)).join("")}}</details>`
+              ? `<details class="block" open>` +
+                `<summary>Tool calls (${{toolCalls.length}})` +
+                `</summary>${{toolCalls.map((toolCall, index) =>
+                  renderToolCall(toolCall, index + 1)
+                ).join("")}}</details>`
               : ""
           }}
           ${{
             toolResults.length
-              ? `<details class="block"><summary>Tool results (${{toolResults.length}})</summary><pre>${{prettyJson(toolResults)}}</pre></details>`
+              ? `<details class="block">` +
+                `<summary>Tool results (${{toolResults.length}})` +
+                `</summary><pre>${{prettyJson(toolResults)}}` +
+                `</pre></details>`
               : ""
           }}
           ${{
             parseError
-              ? `<details class="block"><summary>Parse error</summary><pre>${{prettyJson(record)}}</pre></details>`
+              ? `<details class="block">` +
+                `<summary>Parse error</summary>` +
+                `<pre>${{prettyJson(record)}}</pre></details>`
               : ""
           }}
         </section>
       `;
     }}
 
-    function renderSession(sessionId) {{
+    async function fetchSession(sessionId) {{
+      if (recordCache[sessionId]) return recordCache[sessionId];
+      const resp = await fetch(`/api/session/${{encodeURIComponent(sessionId)}}`);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      recordCache[sessionId] = data;
+      return data;
+    }}
+
+    async function renderSession(sessionId) {{
       activeSessionId = sessionId;
       const summary = summaries.find((entry) => entry.execution_id === sessionId);
-      const records = recordsBySession[sessionId] || [];
 
       renderSessionChooser();
 
@@ -773,6 +816,9 @@ def _render_html(
         renderMetaCard("Source file", summary.log_file),
       ].join("");
 
+      turnsEl.innerHTML = '<div class="empty">Loading session\u2026</div>';
+      const records = await fetchSession(sessionId);
+      if (activeSessionId !== sessionId) return;
       turnsEl.innerHTML = records.length
         ? records.map((record) => renderTurn(record)).join("")
         : '<div class="empty">This session has no turn records.</div>';
@@ -804,7 +850,8 @@ def _render_html(
     }});
 
     const hashSession = decodeURIComponent(window.location.hash.replace(/^#/, ""));
-    const bootSession = recordsBySession[hashSession] ? hashSession : activeSessionId;
+    const knownIds = new Set(summaries.map((s) => s.execution_id));
+    const bootSession = knownIds.has(hashSession) ? hashSession : activeSessionId;
     renderSessionChooser();
     renderSession(bootSession);
   </script>
@@ -813,43 +860,206 @@ def _render_html(
 """
 
 
-def _write_report(html_report: str, output: Path | None) -> Path:
-    if output is not None:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(html_report, encoding="utf-8")
-        return output
+def _sort_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        records,
+        key=lambda r: (str(r.get("timestamp", "")), r.get("iteration", 0)),
+    )
 
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        prefix="hive_llm_debug_",
-        suffix=".html",
-        delete=False,
-        dir="/tmp",
-    ) as handle:
-        handle.write(html_report)
-        return Path(handle.name)
+
+def _load_session_data(logs_dir: Path, session_id: str, limit_files: int) -> list[dict[str, Any]] | None:
+    """Load records for a specific session on demand."""
+    if not logs_dir.exists():
+        return None
+
+    files = sorted(
+        [path for path in logs_dir.iterdir() if path.is_file() and path.suffix == ".jsonl"],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )[:limit_files]
+
+    records: list[dict[str, Any]] = []
+    for path in files:
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for line_number, raw_line in enumerate(handle, start=1):
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        payload = {
+                            "timestamp": "",
+                            "execution_id": "",
+                            "assistant_text": "",
+                            "_parse_error": f"{path.name}:{line_number}",
+                            "_raw_line": line,
+                        }
+                    # Only include records for this session
+                    if str(payload.get("execution_id") or "").strip() == session_id:
+                        payload["_log_file"] = str(path)
+                        records.append(payload)
+        except OSError:
+            continue
+
+    return _sort_records(records) if records else None
+
+
+def _run_server(
+    html: str,
+    logs_dir: Path,
+    limit_files: int,
+    port: int,
+    no_open: bool,
+) -> None:
+    html_bytes = html.encode("utf-8")
+    session_cache: dict[str, list[dict[str, Any]]] = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path == "/":
+                self._respond(200, "text/html; charset=utf-8", html_bytes)
+            elif self.path.startswith("/api/session/"):
+                sid = urllib.parse.unquote(self.path[len("/api/session/") :])
+                # Check cache first
+                if sid in session_cache:
+                    records = session_cache[sid]
+                else:
+                    records = _load_session_data(logs_dir, sid, limit_files)
+                    if records is not None:
+                        session_cache[sid] = records
+                if records is None:
+                    self._respond(404, "application/json", b"[]")
+                else:
+                    body = json.dumps(records, ensure_ascii=False).encode("utf-8")
+                    self._respond(200, "application/json", body)
+            else:
+                self.send_error(404)
+
+        def _respond(self, code: int, content_type: str, body: bytes) -> None:
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass  # silence per-request logs
+
+    server = http.server.HTTPServer(("127.0.0.1", port), Handler)
+    actual_port = server.server_address[1]
+    url = f"http://127.0.0.1:{actual_port}"
+    print(f"Serving at {url}  (Ctrl+C to stop)")
+
+    if not no_open:
+        webbrowser.open(url)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    finally:
+        server.server_close()
+
+
+def _discover_session_summaries(logs_dir: Path, limit_files: int, include_tests: bool) -> list[SessionSummary]:
+    """Discover only session summaries without loading full record data."""
+    if not logs_dir.exists():
+        raise FileNotFoundError(f"log directory not found: {logs_dir}")
+
+    files = sorted(
+        [path for path in logs_dir.iterdir() if path.is_file() and path.suffix == ".jsonl"],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )[:limit_files]
+
+    # Collect minimal info per session: just first/last records and metadata
+    by_session: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for path in files:
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for raw_line in handle:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    execution_id = str(payload.get("execution_id") or "").strip()
+                    if execution_id:
+                        # Store minimal data for summary generation
+                        minimal = {
+                            "timestamp": payload.get("timestamp", ""),
+                            "iteration": payload.get("iteration", 0),
+                            "stream_id": payload.get("stream_id", ""),
+                            "node_id": payload.get("node_id", ""),
+                            "token_counts": payload.get("token_counts", {}),
+                            "_log_file": str(path),
+                        }
+                        by_session[execution_id].append(minimal)
+        except OSError:
+            continue
+
+    # Filter out test sessions if needed
+    if not include_tests:
+        by_session = {eid: recs for eid, recs in by_session.items() if not _is_test_session(eid, recs)}
+
+    summaries: list[SessionSummary] = []
+    for execution_id, session_records in by_session.items():
+        session_records.sort(
+            key=lambda record: (
+                str(record.get("timestamp", "")),
+                record.get("iteration", 0),
+            )
+        )
+        first = session_records[0]
+        last = session_records[-1]
+        summaries.append(
+            SessionSummary(
+                execution_id=execution_id,
+                log_file=str(first.get("_log_file", "")),
+                start_timestamp=str(first.get("timestamp", "")),
+                end_timestamp=str(last.get("timestamp", "")),
+                turn_count=len(session_records),
+                streams=sorted({str(r.get("stream_id", "")) for r in session_records if r.get("stream_id")}),
+                nodes=sorted({str(r.get("node_id", "")) for r in session_records if r.get("node_id")}),
+                models=sorted(
+                    {
+                        str(r.get("token_counts", {}).get("model", ""))
+                        for r in session_records
+                        if isinstance(r.get("token_counts"), dict) and r.get("token_counts", {}).get("model")
+                    }
+                ),
+            )
+        )
+
+    summaries.sort(key=lambda summary: summary.start_timestamp, reverse=True)
+    return summaries
 
 
 def main() -> int:
     args = _parse_args()
-    records = _discover_records(args.logs_dir.expanduser(), args.limit_files)
-    summaries, sessions = _group_sessions(records)
+    logs_dir = args.logs_dir.expanduser()
 
-    initial_session_id = args.session or (
-        summaries[0].execution_id if summaries else ""
-    )
-    if initial_session_id and initial_session_id not in sessions:
+    # Only discover summaries, not full session data
+    summaries = _discover_session_summaries(logs_dir, args.limit_files, args.include_tests)
+
+    initial_session_id = args.session or (summaries[0].execution_id if summaries else "")
+    if initial_session_id and not any(s.execution_id == initial_session_id for s in summaries):
         print(f"session not found: {initial_session_id}")
         return 1
 
-    html_report = _render_html(summaries, sessions, initial_session_id)
-    output_path = _write_report(html_report, args.output)
-    print(output_path)
+    html_report = _render_html(summaries, initial_session_id)
 
-    if not args.no_open:
-        webbrowser.open(output_path.resolve().as_uri())
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(html_report, encoding="utf-8")
+        print(args.output)
+        return 0
 
+    _run_server(html_report, logs_dir, args.limit_files, args.port, args.no_open)
     return 0
 
 
