@@ -626,6 +626,7 @@ class AgentLoop(AgentProtocol):
                 store=self._conversation_store,
                 run_id=ctx.effective_run_id,
                 compaction_buffer_tokens=self._config.compaction_buffer_tokens,
+                compaction_buffer_ratio=self._config.compaction_buffer_ratio,
                 compaction_warning_buffer_tokens=(self._config.compaction_warning_buffer_tokens),
             )
             accumulator = OutputAccumulator(
@@ -1004,6 +1005,8 @@ class AgentLoop(AgentProtocol):
                         input_tokens=turn_tokens.get("input", 0),
                         output_tokens=turn_tokens.get("output", 0),
                         cached_tokens=turn_tokens.get("cached", 0),
+                        cache_creation_tokens=turn_tokens.get("cache_creation", 0),
+                        cost_usd=float(turn_tokens.get("cost", 0.0) or 0.0),
                         execution_id=execution_id,
                         iteration=iteration,
                     )
@@ -2404,7 +2407,9 @@ class AgentLoop(AgentProtocol):
         stream_id = ctx.stream_id or ctx.agent_id
         node_id = ctx.agent_id
         execution_id = ctx.execution_id or ""
-        token_counts: dict[str, int] = {"input": 0, "output": 0, "cached": 0}
+        # Mixed-type dict: int token counts + str stop_reason/model + float cost.
+        # Typed loosely to avoid churn in the many call sites that read from it.
+        token_counts: dict[str, Any] = {"input": 0, "output": 0, "cached": 0, "cache_creation": 0, "cost": 0.0}
         tool_call_count = 0
         final_text = ""
         final_system_prompt = conversation.system_prompt
@@ -2635,6 +2640,8 @@ class AgentLoop(AgentProtocol):
                         token_counts["input"] += event.input_tokens
                         token_counts["output"] += event.output_tokens
                         token_counts["cached"] += event.cached_tokens
+                        token_counts["cache_creation"] += event.cache_creation_tokens
+                        token_counts["cost"] = token_counts.get("cost", 0.0) + event.cost_usd
                         token_counts["stop_reason"] = event.stop_reason
                         token_counts["model"] = event.model
 
@@ -4267,6 +4274,8 @@ class AgentLoop(AgentProtocol):
         input_tokens: int,
         output_tokens: int,
         cached_tokens: int = 0,
+        cache_creation_tokens: int = 0,
+        cost_usd: float = 0.0,
         execution_id: str = "",
         iteration: int | None = None,
     ) -> None:
@@ -4279,6 +4288,8 @@ class AgentLoop(AgentProtocol):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_tokens=cached_tokens,
+            cache_creation_tokens=cache_creation_tokens,
+            cost_usd=cost_usd,
             execution_id=execution_id,
             iteration=iteration,
         )
